@@ -1,16 +1,16 @@
-import time
-from dateutil.relativedelta import relativedelta
-from datetime import datetime, timedelta
-from google.cloud import storage
-import pandas as pd
 import io
 import os
-from google.cloud import bigquery
-import pyarrow
+from datetime import datetime, timedelta
+
+import pandas as pd
+from dateutil.relativedelta import relativedelta
 from google.api_core.exceptions import NotFound, TooManyRequests
+from google.cloud import bigquery
+from google.cloud import storage
+from google.oauth2 import service_account
 
-
-os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = f"""C:/Users/anhduc/Downloads/7. Data Visualation-20230915T063335Z-001/service_key_ggcloud.json"""
+os.environ[
+    'GOOGLE_APPLICATION_CREDENTIALS'] = f"""C:/Users/anhduc/Downloads/7. Data Visualation-20230915T063335Z-001/service_key_ggcloud.json"""
 
 
 def get_data_from_gcs(bucket_name, area, model_name, model_type, file_names):
@@ -152,3 +152,11 @@ def get_files_recent_partition(model_name, num_periods, type_of_time="months", f
         file_names.append(file_name)
 
     return file_names
+
+
+def get_bigquery_connection(service_account_json):
+    credentials = service_account.Credentials.from_service_account_info(service_account_json)
+    client_gcs = storage.Client(credentials=credentials)
+    client_gbq = bigquery.Client(credentials=credentials)
+
+    return client_gcs, client_gbq, credentials
