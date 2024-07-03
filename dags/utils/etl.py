@@ -214,14 +214,14 @@ class LarkETL(StandardETL):
             'user_id': 'string',
             'lark_id': 'string',
             'check_time': 'datetime64[ns, UTC]',
-            'attendance_location': 'string',
+            'check_location': 'string',
             'is_offsite': 'bool',
             'attendance_date': 'datetime64[ns, UTC]',
             'etl_inserted': 'datetime64[ns, UTC]',
             'partition_date': 'datetime64[ns, UTC]'
         }
         col_mappings = {
-            'Check location name': 'attendance_location',
+            'Check location name': 'check_location',
             'Check time': 'check_time',
             'Date': 'attendance_date',
             'Is offsite': 'is_offsite',
@@ -360,12 +360,20 @@ class LarkETL(StandardETL):
 
         return dim_employee_df
 
-    def get_fct_attendance_record(
+    def get_fact_attendance_record(
             self,
             input_datasets: Dict[str, DataSet],
             **kwargs,
     ) -> DataFrame:
-        pass
+        dim_employee = input_datasets['dim_employee'].curr_data
+        attendance_record_df = input_datasets['attendance_record'].curr_data
+        fact_attendance_record_df = pd.merge(attendance_record_df, dim_employee, how='left', on=['user_id'],
+                                             suffixes=['', '_right'])
+        selected_cols = [col for col in attendance_record_df.columns if
+                         col not in ['etl_inserted', 'partition_date']] + ['employee_sur_id']
+        fact_attendance_record_df = fact_attendance_record_df[selected_cols]
+
+        return fact_attendance_record_df
 
     def get_silver_datasets(
             self,
@@ -391,7 +399,23 @@ class LarkETL(StandardETL):
             partition=kwargs.get('partition', self.DEFAULT_PARTITION),
         )
         self.publish_data(silver_datasets, **kwargs)
+        silver_datasets['dim_employee'].curr_data = pd.read_gbq(
+            "SELECT * FROM silver.dim_employee WHERE is_current = True", dialect="standard",
+            credentials=kwargs.get('credentials', None))
         silver_datasets['dim_employee'].skip_publish = True
+        input_datasets['dim_employee'] = silver_datasets['dim_employee']
+
+        silver_datasets['fact_attendance_record'] = DataSet(
+            name='fact_attendance_record',
+            curr_data=self.get_fact_attendance_record(input_datasets, **kwargs),
+            primary_keys=['record_id'],
+            storage_path='',
+            table_name='fact_attendance_record',
+            data_type='',
+            database='silver',
+            partition=kwargs.get('partition', self.DEFAULT_PARTITION),
+            replace_partition=True,
+        )
 
         return silver_datasets
 
