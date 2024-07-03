@@ -107,11 +107,3 @@ class Lark:
             task_logger.error(f'[get_tenant_access_token] Error function: {e}')
 
         return tables
-
-
-if __name__ == '__main__':
-    lark = Lark(
-        app_id='cli_a6f7cc6319f8902f',
-        app_secret='PVWmscFJLUsVy7OZzxo5pbkgUuU4eNAU'
-    )
-    print(lark.get_records(app_token='PXJIbO6oGaLNa3sxLXxlQ5eegCe', table_id='tblZcqZFnoyzu913', table_name='Attendance_Results'))
