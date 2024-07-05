@@ -138,6 +138,16 @@ class StandardETL(ABC):
         )
 
 
+        gold_data_sets = self.get_gold_datasets(
+            silver_data_sets, **kwargs
+        )
+        self.publish_data(gold_data_sets, **kwargs)
+        logging.info(
+            'Created & published gold datasets:'
+            f' {[ds for ds in gold_data_sets.keys()]}'
+        )
+
+
 class LarkETL(StandardETL):
     def get_bronze_datasets(
             self, **kwargs
@@ -424,4 +434,45 @@ class LarkETL(StandardETL):
             input_datasets: Dict[str, DataSet],
             **kwargs,
     ) -> Dict[str, DataSet]:
-        pass
+        self.check_required_inputs(input_datasets, ['dim_employee', 'fact_attendance'])
+
+        dim_employee_df = input_datasets['dim_employee'].curr_data
+        fact_attendance_df = input_datasets['fact_attendance'].curr_data
+
+        fact_attendance_df['attendance_date'] = pd.to_datetime(fact_attendance_df['attendance_date'])
+        dim_employee_df['is_current'] = dim_employee_df['is_current'].astype(bool)
+
+        dim_employee_current_df = dim_employee_df[dim_employee_df['is_current'] == True]
+
+        merged_df = fact_attendance_df.merge(dim_employee_current_df, left_on='employee_id', right_on='employee_id',
+                                             how='left')
+
+        # Tạo DataFrame cho cube_attendance_report
+        cube_attendance_report_df = pd.DataFrame()
+
+        cube_attendance_report_df['attendance_month'] = merged_df['attendance_date'].dt.strftime('%Y-%m')
+        cube_attendance_report_df['attendance_date'] = merged_df['attendance_date'].dt.strftime('%Y-%m-%d')
+        cube_attendance_report_df['lark_hrm_code'] = merged_df['user_id']
+        cube_attendance_report_df['hrm_name'] = merged_df['name']
+        cube_attendance_report_df['job_title'] = merged_df['job_title']
+        cube_attendance_report_df['onsite_duration'] = merged_df['is_offsite'].apply(
+            lambda x: 'On-site' if not x else 'Off-site')
+        cube_attendance_report_df['working_duration'] = merged_df['work_duration']
+        cube_attendance_report_df['late_duration'] = merged_df['late_time']
+        cube_attendance_report_df['early_duration'] = merged_df['early_time']
+        cube_attendance_report_df['penalty_amount'] = merged_df['penalty_amount']
+
+
+        cube_attendance_report = DataSet(
+            name='cube_attendance_report',
+            curr_data=cube_attendance_report_df,
+            primary_keys=['lark_hrm_code', 'attendance_date'],
+            storage_path='',
+            table_name='cube_attendance_report',
+            data_type='',
+            database='gold',
+            partition=None,
+            replace_partition=True,
+        )
+
+        return {'cube_attendance_report': cube_attendance_report}
