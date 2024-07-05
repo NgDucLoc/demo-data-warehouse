@@ -145,6 +145,7 @@ class LarkETL(StandardETL):
         raw_bucket = kwargs.get('client_gcs').get_bucket(self.RAW_BUCKET)
         partition = kwargs.get('partition', self.DEFAULT_PARTITION)
 
+        # Employee
         employee_col_types = {
             'user_id': 'string',
             'lark_id': 'string',
@@ -209,7 +210,8 @@ class LarkETL(StandardETL):
             else:
                 employee_df[col] = employee_df[col].astype(col_type)
 
-        attendance_col_types = {
+        # Attendance Record
+        attendance_record_col_types = {
             'attendance_record_id': 'string',
             'user_id': 'string',
             'lark_id': 'string',
@@ -234,7 +236,7 @@ class LarkETL(StandardETL):
         attendance_record_df = attendance_record_df.rename(columns=col_mappings)
 
         # Set null for col not have data.
-        for col in attendance_col_types.keys():
+        for col in attendance_record_col_types.keys():
             if col not in attendance_record_df.columns:
                 attendance_record_df[col] = None
 
@@ -249,12 +251,116 @@ class LarkETL(StandardETL):
             lambda item: datetime.fromtimestamp(int(item / 1000)) if type(item) in (float, int) and not math.isnan(
                 item) else None)
 
-        attendance_record_df = attendance_record_df[attendance_col_types.keys()]
-        for col, col_type in attendance_col_types.items():
+        attendance_record_df = attendance_record_df[attendance_record_col_types.keys()]
+        for col, col_type in attendance_record_col_types.items():
             if col_type == 'datetime64[ns, UTC]':
                 attendance_record_df[col] = pd.to_datetime(attendance_record_df[col], utc=True)
             else:
                 attendance_record_df[col] = attendance_record_df[col].astype(col_type)
+
+        # Attendance
+        attendance_col_types = {
+            'attendance_id': 'string',
+            'attendance_date': 'datetime64[ns, UTC]',
+            'user_id': 'string',
+            'lark_id': 'string',
+            'employee_type': 'string',
+            'group_name': 'string',
+            'shift_name': 'string',
+            'check_in_record_id': 'string',
+            'check_in_shift_time': 'datetime64[ns, UTC]',
+            'datetime_check_in': 'datetime64[ns, UTC]',
+            'check_in_location_name': 'string',
+            'check_in_is_offsite': 'boolean',
+            'check_in_type': 'string',
+            'check_in_result': 'string',
+            'check_in_result_supplement': 'string',
+            'check_out_record_id': 'string',
+            'check_out_shift_time': 'datetime64[ns, UTC]',
+            'datetime_check_out': 'datetime64[ns, UTC]',
+            'check_out_location_name': 'string',
+            'check_out_is_offsite': 'boolean',
+            'check_out_type': 'string',
+            'check_out_result': 'string',
+            'check_out_result_supplement': 'string',
+            'request_penalty': 'boolean',
+            'early_late': 'boolean',
+            'early_late_20_min': 'boolean',
+            'penalty_early_late_20_min': 'int64',
+            'penalty': 'int64',
+            'reason': 'string'
+        }
+        col_mappings = {
+            'Result id': 'attendance_id',
+            'User id': 'user_id',
+            'Employee': 'employee',
+            'Employee type': 'employee_type',
+            'Date': 'attendance_date',
+            'Group name': 'group_name',
+            'Shift name': 'shift_name',
+            'Check in record id': 'check_in_record_id',
+            'Check in time': 'datetime_check_in',
+            'Check in shift time': 'check_in_shift_time',
+            'Check in location name': 'check_in_location_name',
+            'Check in - Is offsite': 'check_in_is_offsite',
+            'Check in type': 'check_in_type',
+            'Check in result': 'check_in_result',
+            'Check in result supplement': 'check_in_result_supplement',
+            'Check out record id': 'check_out_record_id',
+            'Check out time': 'datetime_check_out',
+            'Check out shift time': 'check_out_shift_time',
+            'Check out location name': 'check_out_location_name',
+            'Check out - Is offsite': 'check_out_is_offsite',
+            'Check out type': 'check_out_type',
+            'Check out result': 'check_out_result',
+            'Check out result supplement': 'check_out_result_supplement',
+            'Nhân sự không đồng ý phiếu phạt': 'request_penalty',
+            'Giá phạt đi muộn/ về sớm': 'early_late_price',
+            'Muộn 20p/sớm 20p': 'early_late_20_min',
+            'Phạt muộn 20p/sớm 20p': 'penalty_early_late_20_min',
+            'Đi muộn / về sớm': 'early_late',
+            'Tiền phạt': 'penalty',
+            'Lý do': 'reason'
+        }
+        employee_type_mappings = {
+            'optrBomdAH': 'Thử việc',
+            'optv4rP0DT': 'Chính thức'
+        }
+
+        attendance_blob = raw_bucket.blob(f"lark/tblZcqZFnoyzu913/{partition}/data.csv")
+        attendance_df = pd.read_csv(attendance_blob.open('r', encoding="utf8"), index_col=0)
+        attendance_df = attendance_df.rename(columns=col_mappings)
+
+        # Set null for col not have data.
+        for col in attendance_col_types.keys():
+            if col not in attendance_df.columns:
+                attendance_df[col] = None
+
+        attendance_df['employee'] = attendance_df['employee'].apply(
+            lambda item: ast.literal_eval(item) if isinstance(item, str) else item)
+        attendance_df['lark_id'] = attendance_df['employee'].apply(
+            lambda item: item[0].get('id', None) if isinstance(item, list) else '')
+        attendance_df['employee_type'] = attendance_df['employee_type'].apply(
+            lambda item: employee_type_mappings.get(ast.literal_eval(item)[0]) if isinstance(item, str) and isinstance(
+                ast.literal_eval(item),
+                list) else '')
+        attendance_df['early_late_price'] = attendance_df['early_late_price'].apply(
+            lambda item: item[0] if isinstance(item, list) else 0)
+        attendance_df['penalty_early_late_20_min'] = attendance_df['penalty_early_late_20_min'].apply(
+            lambda item: item[0] if isinstance(item, list) else 0)
+        attendance_df['penalty'] = attendance_df['penalty'].apply(
+            lambda item: item if isinstance(item, int) else 0)
+
+        for col, col_type in attendance_col_types.items():
+            if col_type == 'datetime64[ns, UTC]':
+                attendance_df[col] = attendance_df[col].apply(
+                    lambda item: datetime.fromtimestamp(int(item / 1000)) if type(item) in (
+                        float, int) and not math.isnan(
+                        item) else None)
+                attendance_df[col] = pd.to_datetime(attendance_df[col], utc=True)
+            else:
+                attendance_df[col] = attendance_df[col].astype(col_type)
+        attendance_df = attendance_df[attendance_col_types.keys()]
 
         return {
             'employee': DataSet(
@@ -274,6 +380,17 @@ class LarkETL(StandardETL):
                 primary_keys=['record_id', 'partition_date'],
                 storage_path='',
                 table_name='attendance_record',
+                data_type='bigquery',
+                database='bronze',
+                partition=partition,
+                replace_partition=True,
+            ),
+            'attendance': DataSet(
+                name='attendance',
+                curr_data=attendance_df,
+                primary_keys=['attendance_id', 'partition_date'],
+                storage_path='',
+                table_name='attendance',
                 data_type='bigquery',
                 database='bronze',
                 partition=partition,
@@ -375,6 +492,21 @@ class LarkETL(StandardETL):
 
         return fact_attendance_record_df
 
+    def get_fact_attendance(
+            self,
+            input_datasets: Dict[str, DataSet],
+            **kwargs,
+    ) -> DataFrame:
+        dim_employee = input_datasets['dim_employee'].curr_data
+        attendance_df = input_datasets['attendance'].curr_data
+        fact_attendance_df = pd.merge(attendance_df, dim_employee, how='left', on=['user_id'],
+                                      suffixes=['', '_right'])
+        selected_cols = [col for col in attendance_df.columns if
+                         col not in ['lark_id', 'etl_inserted', 'partition_date']] + ['employee_sur_id']
+        fact_attendance_df = fact_attendance_df[selected_cols]
+
+        return fact_attendance_df
+
     def get_silver_datasets(
             self,
             input_datasets: Dict[str, DataSet],
@@ -411,6 +543,17 @@ class LarkETL(StandardETL):
             primary_keys=['record_id'],
             storage_path='',
             table_name='fact_attendance_record',
+            data_type='',
+            database='silver',
+            partition=kwargs.get('partition', self.DEFAULT_PARTITION),
+            replace_partition=True,
+        )
+        silver_datasets['fact_attendance'] = DataSet(
+            name='fact_attendance',
+            curr_data=self.get_fact_attendance(input_datasets, **kwargs),
+            primary_keys=['attendance_id'],
+            storage_path='',
+            table_name='fact_attendance',
             data_type='',
             database='silver',
             partition=kwargs.get('partition', self.DEFAULT_PARTITION),
