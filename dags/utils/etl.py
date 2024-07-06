@@ -64,6 +64,13 @@ class StandardETL(ABC):
                 curr_data['etl_inserted'] = pd.Timestamp.utcnow()
                 curr_data['partition_date'] = input_dataset.partition
 
+                target_table_ref = kwargs.get('client_gbq').dataset(input_dataset.database).table(
+                    input_dataset.table_name)
+                target_table = kwargs.get('client_gbq').get_table(target_table_ref)
+                target_table_schema = target_table.schema
+                target_table_schema = [{'name': field.name, 'type': field.field_type, 'mode': field.mode} for field
+                                       in target_table_schema]
+
                 if input_dataset.replace_partition:
                     query = f"""
                     DELETE FROM `{input_dataset.database}.{input_dataset.table_name}`
@@ -71,7 +78,7 @@ class StandardETL(ABC):
                     """
                     kwargs.get('client_gbq').query(query).result()
                     curr_data.to_gbq(f'{input_dataset.database}.{input_dataset.table_name}', if_exists='append',
-                                     credentials=kwargs.get('credentials'))
+                                     credentials=kwargs.get('credentials'), table_schema=target_table_schema)
                 else:
                     source_df = input_dataset.curr_data
                     target_df = pd.read_gbq(f"select * from {input_dataset.database}.{input_dataset.table_name}",
@@ -87,13 +94,6 @@ class StandardETL(ABC):
                     merged_df = merged_df[source_df.columns]
                     merged_df = merged_df.astype(source_df.dtypes)
                     merged_df['partition_date'] = pd.to_datetime(merged_df['partition_date'], utc=True)
-
-                    target_table_ref = kwargs.get('client_gbq').dataset(input_dataset.database).table(
-                        input_dataset.table_name)
-                    target_table = kwargs.get('client_gbq').get_table(target_table_ref)
-                    target_table_schema = target_table.schema
-                    target_table_schema = [{'name': field.name, 'type': field.field_type, 'mode': field.mode} for field
-                                           in target_table_schema]
 
                     merged_df.to_gbq(f'{input_dataset.database}.{input_dataset.table_name}', if_exists='replace',
                                      credentials=kwargs.get('credentials'), table_schema=target_table_schema)
@@ -598,11 +598,9 @@ class LarkETL(StandardETL):
         cube_attendance_report_df['hrm_name'] = merged_df['name']
         cube_attendance_report_df['job_title'] = merged_df['job_title']
 
-
-        datetime_col = ['datetime_check_in', 'datetime_check_out','check_out_shift_time','check_in_shift_time']
+        datetime_col = ['datetime_check_in', 'datetime_check_out', 'check_out_shift_time', 'check_in_shift_time']
         merged_df[datetime_col] = merged_df[datetime_col].apply(
             lambda x: pd.to_datetime(x, format='%d/%m/%Y %H:%M', errors='coerce'))
-
 
         cube_attendance_report_df['late_time_minute'] = (
                 (merged_df['datetime_check_in'] + pd.Timedelta(hours=7) - merged_df[
@@ -618,11 +616,26 @@ class LarkETL(StandardETL):
                 (merged_df['datetime_check_out'] - merged_df['datetime_check_in']).dt.total_seconds() / 3600
         ).fillna(0)
 
-
         cube_attendance_report_df['penalty_amount'] = merged_df['penalty']
 
-        cube_attendance_report_df.dropna(how='all', inplace=True)
+        col_dtypes = {
+            'attendance_month': 'string',
+            'attendance_date': 'datetime64[us, UTC]',
+            'lark_hrm_code': 'string',
+            'hrm_name': 'string',
+            'job_title': 'string',
+            'late_time_minute': 'int64',
+            'early_time_minute': 'int64',
+            'working_duration_hours': 'int64',
+            'penalty_amount': 'int64'
+        }
+        for col, col_type in col_dtypes.items():
+            if col_type == 'datetime64[ns, UTC]':
+                cube_attendance_report_df[col] = pd.to_datetime(cube_attendance_report_df[col], utc=True)
+            else:
+                cube_attendance_report_df[col] = cube_attendance_report_df[col].astype(col_type)
 
+        cube_attendance_report_df.dropna(how='all', inplace=True)
         cube_attendance_report = DataSet(
             name='cube_attendance_report',
             curr_data=cube_attendance_report_df,
@@ -631,9 +644,8 @@ class LarkETL(StandardETL):
             table_name='cube_attendance_report',
             data_type='',
             database='gold',
-            partition = datetime.utcnow().strftime("%Y-%m-%d"),
+            partition=kwargs.get('partition', self.DEFAULT_PARTITION),
             replace_partition=True,
         )
 
         return {'cube_attendance_report': cube_attendance_report}
-
