@@ -616,6 +616,10 @@ class LarkETL(StandardETL):
                 (merged_df['datetime_check_out'] - merged_df['datetime_check_in']).dt.total_seconds() / 3600
         ).fillna(0)
 
+        cube_attendance_report_df['working_duration_benchmark'] = (
+                (merged_df['check_out_shift_time'] - merged_df['check_in_shift_time']).dt.total_seconds() / 3600
+        ).fillna(0)
+
         cube_attendance_report_df['penalty_amount'] = merged_df['penalty']
 
         col_dtypes = {
@@ -627,6 +631,7 @@ class LarkETL(StandardETL):
             'late_time_minute': 'int64',
             'early_time_minute': 'int64',
             'working_duration_hours': 'int64',
+            'working_duration_benchmark': 'int64',
             'penalty_amount': 'int64'
         }
         for col, col_type in col_dtypes.items():
