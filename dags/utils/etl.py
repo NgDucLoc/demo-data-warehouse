@@ -587,10 +587,9 @@ class LarkETL(StandardETL):
 
         dim_employee_current_df = dim_employee_df[dim_employee_df['is_current'] == True]
 
-        merged_df = fact_attendance_df.merge(dim_employee_current_df, left_on='employee_id', right_on='employee_id',
+        merged_df = fact_attendance_df.merge(dim_employee_current_df, left_on='user_id', right_on='user_id',
                                              how='left')
 
-        # Tạo DataFrame cho cube_attendance_report
         cube_attendance_report_df = pd.DataFrame()
 
         cube_attendance_report_df['attendance_month'] = merged_df['attendance_date'].dt.strftime('%Y-%m')
@@ -598,13 +597,31 @@ class LarkETL(StandardETL):
         cube_attendance_report_df['lark_hrm_code'] = merged_df['user_id']
         cube_attendance_report_df['hrm_name'] = merged_df['name']
         cube_attendance_report_df['job_title'] = merged_df['job_title']
-        cube_attendance_report_df['onsite_duration'] = merged_df['is_offsite'].apply(
-            lambda x: 'On-site' if not x else 'Off-site')
-        cube_attendance_report_df['working_duration'] = merged_df['work_duration']
-        cube_attendance_report_df['late_duration'] = merged_df['late_time']
-        cube_attendance_report_df['early_duration'] = merged_df['early_time']
-        cube_attendance_report_df['penalty_amount'] = merged_df['penalty_amount']
 
+
+        datetime_col = ['datetime_check_in', 'datetime_check_out','check_out_shift_time','check_in_shift_time']
+        merged_df[datetime_col] = merged_df[datetime_col].apply(
+            lambda x: pd.to_datetime(x, format='%d/%m/%Y %H:%M', errors='coerce'))
+
+
+        cube_attendance_report_df['late_time_minute'] = (
+                (merged_df['datetime_check_in'] + pd.Timedelta(hours=7) - merged_df[
+                    'check_in_shift_time']).dt.total_seconds() / 60
+        ).clip(upper=0).abs().fillna(0)
+
+        cube_attendance_report_df['early_time_minute'] = (
+                (merged_df['datetime_check_out'] + pd.Timedelta(hours=7) - merged_df[
+                    'check_out_shift_time']).dt.total_seconds() / 60
+        ).clip(upper=0).abs().fillna(0)
+
+        cube_attendance_report_df['working_duration_hours'] = (
+                (merged_df['datetime_check_out'] - merged_df['datetime_check_in']).dt.total_seconds() / 3600
+        ).fillna(0)
+
+
+        cube_attendance_report_df['penalty_amount'] = merged_df['penalty']
+
+        cube_attendance_report_df.dropna(how='all', inplace=True)
 
         cube_attendance_report = DataSet(
             name='cube_attendance_report',
@@ -614,8 +631,9 @@ class LarkETL(StandardETL):
             table_name='cube_attendance_report',
             data_type='',
             database='gold',
-            partition=None,
+            partition = datetime.utcnow().strftime("%Y-%m-%d"),
             replace_partition=True,
         )
 
         return {'cube_attendance_report': cube_attendance_report}
+
