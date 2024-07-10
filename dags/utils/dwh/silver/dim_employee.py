@@ -1,0 +1,23 @@
+# CREATE TABLE silver.dim_employee (
+#     user_id STRING,
+#     lark_id STRING,
+#     employee_sur_id STRING,
+#     employee_no STRING,
+#     name STRING,
+#     employee_type STRING,
+#     email STRING,
+#     mobile STRING,
+#     department_ids ARRAY<STRING>,
+#     leader_sur_id STRING,
+#     join_time TIMESTAMP,
+#     job_title STRING,
+#     city STRING,
+#     gender STRING,
+#     datetime_created TIMESTAMP,
+#     datetime_updated TIMESTAMP,
+#     valid_from TIMESTAMP,
+#     valid_to TIMESTAMP,
+#     is_current BOOL,
+#     etl_inserted TIMESTAMP,
+#     partition_value DATE
+# ) PARTITION BY partition_value;

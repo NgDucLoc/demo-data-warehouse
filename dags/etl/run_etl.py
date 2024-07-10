@@ -6,7 +6,7 @@ from airflow import DAG
 from airflow.decorators import task
 from airflow.models import Variable, Connection
 from airflow.operators.empty import EmptyOperator
-from utils.bigquery import get_bigquery_connection
+from utils.common.data_helper import get_bigquery_connection
 from utils.etl import LarkETL
 
 # get the airflow.task logger
