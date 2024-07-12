@@ -64,7 +64,7 @@ class StandardETL(ABC):
             **kwargs,
     ) -> None:
         for input_dataset in input_datasets.values():
-            if not input_dataset.skip_publish:
+            if not (input_dataset.skip_publish or (input_dataset.curr_data is None or input_dataset.curr_data.empty)):
                 curr_data = input_dataset.curr_data
                 curr_data['etl_inserted'] = pd.Timestamp.utcnow()
                 curr_data['partition_value'] = input_dataset.partition
@@ -139,13 +139,15 @@ class LarkETL(StandardETL):
             bucket_name=self.RAW_BUCKET,
             table_path=f"lark/tbllYZkNjgSHIcmT/{partition}/data.csv"
         )
-        # Common processing for table
-        employee_df = preprocess_bronze_data(
-            data_df=employee_df,
-            tbl_cols_dict=TBL_EMPLOYEE,
-            rename_cols_dict=RENAME_EMPLOYEE_COLS
-        )
-        employee_df.dropna(subset=['user_id'], inplace=True)
+
+        if employee_df is not None and not employee_df.empty:
+            # Common processing for table
+            employee_df = preprocess_bronze_data(
+                data_df=employee_df,
+                tbl_cols_dict=TBL_EMPLOYEE,
+                rename_cols_dict=RENAME_EMPLOYEE_COLS
+            )
+            employee_df.dropna(subset=['user_id'], inplace=True)
 
         # Load table Attendance Record from GCS
         attendance_record_df = read_gcs_table(
@@ -153,12 +155,14 @@ class LarkETL(StandardETL):
             bucket_name=self.RAW_BUCKET,
             table_path=f"lark/tblPQIgHsv2W2Wq3/{partition}/data.csv"
         )
-        # Common processing for table
-        attendance_record_df = preprocess_bronze_data(
-            data_df=attendance_record_df,
-            tbl_cols_dict=TBL_ATTENDANCE_RECORD,
-            rename_cols_dict=RENAME_ATTENDANCE_RECORD_COLS
-        )
+
+        if attendance_record_df is not None and not attendance_record_df.empty:
+            # Common processing for table
+            attendance_record_df = preprocess_bronze_data(
+                data_df=attendance_record_df,
+                tbl_cols_dict=TBL_ATTENDANCE_RECORD,
+                rename_cols_dict=RENAME_ATTENDANCE_RECORD_COLS
+            )
 
         # Load table Attendance from GCS
         attendance_df = read_gcs_table(
@@ -166,12 +170,14 @@ class LarkETL(StandardETL):
             bucket_name=self.RAW_BUCKET,
             table_path=f"lark/tblZcqZFnoyzu913/{partition}/data.csv"
         )
-        # Common processing for table
-        attendance_df = preprocess_bronze_data(
-            data_df=attendance_df,
-            tbl_cols_dict=TBL_ATTENDANCE,
-            rename_cols_dict=RENAME_ATTENDANCE_COLS
-        )
+
+        if attendance_df is not None and not attendance_df.empty:
+            # Common processing for table
+            attendance_df = preprocess_bronze_data(
+                data_df=attendance_df,
+                tbl_cols_dict=TBL_ATTENDANCE,
+                rename_cols_dict=RENAME_ATTENDANCE_COLS
+            )
 
         return {
             'employee': DataSet(
@@ -213,6 +219,10 @@ class LarkETL(StandardETL):
             self, employee: DataSet, **kwargs
     ) -> DataFrame:
         employee_df = employee.curr_data
+
+        if employee_df is None or employee_df.empty:
+            return None
+
         employee_df['employee_sur_id'] = employee_df.apply(
             lambda item: md5((item['user_id'] + item['datetime_updated'].strftime(self.DEFAULT_FORMAT_DATETIME)).encode(
                 'utf-8')).hexdigest(), axis=1)
@@ -296,9 +306,12 @@ class LarkETL(StandardETL):
 
         dim_employee = input_datasets['dim_employee'].curr_data
         attendance_record_df = input_datasets['attendance_record'].curr_data
+
+        if attendance_record_df is None or attendance_record_df.empty:
+            return None
+
         fact_attendance_record_df = pd.merge(attendance_record_df, dim_employee, how='left', on=['user_id'],
                                              suffixes=['', '_right'])
-
         # Apply schema from GBQ
         fact_attendance_record_df = apply_schema_to_df(
             client_gbq=kwargs.get('client_gbq'),
@@ -318,9 +331,12 @@ class LarkETL(StandardETL):
 
         dim_employee = input_datasets['dim_employee'].curr_data
         attendance_df = input_datasets['attendance'].curr_data
+
+        if attendance_df is None or attendance_df.empty:
+            return None
+
         fact_attendance_df = pd.merge(attendance_df, dim_employee, how='left', on=['user_id'],
                                       suffixes=['', '_right'])
-
         # Apply schema from GBQ
         fact_attendance_df = apply_schema_to_df(
             client_gbq=kwargs.get('client_gbq'),

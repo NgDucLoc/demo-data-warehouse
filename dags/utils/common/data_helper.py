@@ -1,6 +1,7 @@
+import logging
 import math
 from datetime import datetime
-import logging
+
 import pandas as pd
 from google.cloud import bigquery, storage
 from google.cloud.exceptions import NotFound
@@ -11,11 +12,25 @@ from .schema_helper import get_gbq_table_schema
 # get the airflow.task logger
 task_logger = logging.getLogger("airflow.task")
 
+# Init constants
+DEFAULT_DATE_FORMAT = '%Y%m%d'
+DEFAULT_DATE_PARTITON_FORMAT = '%Y-%m-%d'
+FULL_DATETIME_FORMAT = '%Y-%m-%dT%H:%M:%S.%f'
+DEFAULT_DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S'
+GMT_DATETIME_FORMAT = '%Y-%m-%dT%H:%M:%S'
+SECONDS_IN_DAY = 60 * 60 * 24
+SECONDS_IN_HOUR = 60 * 60
+SECONDS_IN_MINUTE = 60
+
 
 def read_gcs_table(client_gcs, bucket_name, table_path):
     bucket = client_gcs.get_bucket(bucket_name)
     blob = bucket.blob(table_path)
-    table_df = pd.read_csv(blob.open('r', encoding="utf8"), index_col=0)
+
+    if blob.exists():
+        table_df = pd.read_csv(blob.open('r', encoding="utf8"), index_col=0)
+    else:
+        table_df = None
 
     return table_df
 
@@ -51,7 +66,6 @@ def save_table_to_gbq(client_gbq, database_name, table_name, data_df, replace_pa
             schema=target_schema
         )
         table_ref = client_gbq.dataset(database_name).table(table_name)
-        task_logger.info(data_df.info())
         job = client_gbq.load_table_from_dataframe(
             data_df, table_ref, job_config=job_config
         )
