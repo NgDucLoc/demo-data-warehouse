@@ -7,8 +7,8 @@
 #     late_time_minute int64,
 #     early_time_minute int64,
 #     working_duration_hours int64,
+#     working_duration_benchmark int64,
 #     penalty_amount int64,
 #     etl_inserted TIMESTAMP,
 #     partition_value DATE,
-#     working_duration_benchmark INTEGER
 # ) partition by partition_value;

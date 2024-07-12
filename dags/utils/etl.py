@@ -137,7 +137,7 @@ class LarkETL(StandardETL):
         employee_df = read_gcs_table(
             client_gcs=kwargs.get('client_gcs'),
             bucket_name=self.RAW_BUCKET,
-            table_path=f"lark/tbllYZkNjgSHIcmT/{partition}/data.csv"
+            table_path=f"lark/tblXTpGXeRW8mAfx/{partition}/data.csv"
         )
 
         if employee_df is not None and not employee_df.empty:
@@ -153,7 +153,7 @@ class LarkETL(StandardETL):
         attendance_record_df = read_gcs_table(
             client_gcs=kwargs.get('client_gcs'),
             bucket_name=self.RAW_BUCKET,
-            table_path=f"lark/tblPQIgHsv2W2Wq3/{partition}/data.csv"
+            table_path=f"lark/tblzcYy2TaKLtSIJ/{partition}/data.csv"
         )
 
         if attendance_record_df is not None and not attendance_record_df.empty:
@@ -168,7 +168,7 @@ class LarkETL(StandardETL):
         attendance_df = read_gcs_table(
             client_gcs=kwargs.get('client_gcs'),
             bucket_name=self.RAW_BUCKET,
-            table_path=f"lark/tblZcqZFnoyzu913/{partition}/data.csv"
+            table_path=f"lark/tblyIrzuCoAorFyE/{partition}/data.csv"
         )
 
         if attendance_df is not None and not attendance_df.empty:
