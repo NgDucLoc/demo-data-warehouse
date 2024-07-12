@@ -1,21 +1,23 @@
+import json
 import logging
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
-import pytz
 from airflow import DAG
 from airflow.decorators import task, task_group
 from airflow.models import Variable
 from airflow.operators.empty import EmptyOperator
 from airflow.operators.python import PythonOperator
 from airflow.providers.google.cloud.hooks.gcs import GCSHook
+from utils.common.data_helper import DEFAULT_DATETIME_FORMAT, DEFAULT_DATE_PARTITON_FORMAT
 from utils.lark import Lark
 
 # get the airflow.task logger
 task_logger = logging.getLogger("airflow.task")
 SOURCE_NAME = 'lark'
-PARTITION_FORMAT = '%Y-%m-%d'
+CURRENT_DATE = datetime.utcnow().strftime(DEFAULT_DATE_PARTITON_FORMAT)
 
 
 def _extract_and_dump_table_records(ti, table_id, table_name):
@@ -25,6 +27,7 @@ def _extract_and_dump_table_records(ti, table_id, table_name):
         api_page_size=Variable.get('lark_api_page_size', default_var=20)
     )
 
+    # ingest table from lark base
     records = lark_base.get_records(
         app_token=Variable.get('lark_app_token', default_var=None),
         table_id=table_id,
@@ -32,20 +35,57 @@ def _extract_and_dump_table_records(ti, table_id, table_name):
     )
     df = pd.DataFrame([record.get('fields', []) for record in records])
 
-    output_dir = Path(f'/tmp/{SOURCE_NAME}')
-    output_dir.mkdir(parents=True, exist_ok=True)
-    df.to_csv(f'{output_dir}/{table_id}.csv')
+    # Incremental mode
+    if 'Last Modified Date' in df.columns:
+        # Get ingestion information dictionary
+        lark_ingestion_info = Variable.get('lark_ingestion_info', default_var={})
+        if isinstance(lark_ingestion_info, str):
+            lark_ingestion_info = json.loads(lark_ingestion_info)
+        table_ingestion_info = lark_ingestion_info.get(table_id, {})
+
+        # max 'Last Modified Date' from prev ingestion
+        prev_latest_datetime = table_ingestion_info.get('prev_latest_datetime', 0)
+        # max 'Last Modified Date' from current ingestion
+        latest_datetime = table_ingestion_info.get('latest_datetime', 0)
+        # datetime from recent ingestion
+        latest_ingestion_datetime = table_ingestion_info.get('latest_ingestion_datetime',
+                                                             datetime.utcnow().strftime(DEFAULT_DATETIME_FORMAT))
+        latest_ingestion_datetime = datetime.strptime(latest_ingestion_datetime, DEFAULT_DATETIME_FORMAT)
+
+        latest_ingestion_date = latest_ingestion_datetime.date()
+        current_date = datetime.utcnow().date()
+        if latest_ingestion_date == current_date:
+            offset_datetime = prev_latest_datetime
+        else:
+            offset_datetime = latest_datetime
+
+        df = df[df['Last Modified Date'] > offset_datetime]
+
+        if len(df) != 0:
+            table_ingestion_info['latest_datetime'] = max(df['Last Modified Date'])
+            table_ingestion_info['latest_ingestion_datetime'] = datetime.utcnow().strftime(DEFAULT_DATETIME_FORMAT)
+            if latest_ingestion_date != current_date:
+                table_ingestion_info['prev_latest_datetime'] = latest_datetime
+            lark_ingestion_info[table_id] = table_ingestion_info
+            Variable.set("lark_ingestion_info", json.dumps(lark_ingestion_info))
+
+            # Save data to local
+            output_dir = Path(f'/tmp/{SOURCE_NAME}')
+            output_dir.mkdir(parents=True, exist_ok=True)
+            df.to_csv(f'{output_dir}/{table_id}.csv')
 
 
 def _local_to_gcs(table_id, bucket_name):
     hook = GCSHook()
 
-    hook.upload(
-        bucket_name=bucket_name,
-        object_name=f'lark/{table_id}/{datetime.utcnow().replace(tzinfo=pytz.UTC).strftime(PARTITION_FORMAT)}/data.csv',
-        mime_type='application/octet-stream',
-        filename=f'/tmp/{SOURCE_NAME}/{table_id}.csv',
-    )
+    source_path = f'/tmp/{SOURCE_NAME}/{table_id}.csv'
+    if os.path.isfile(source_path):
+        hook.upload(
+            bucket_name=bucket_name,
+            object_name=f'lark/{table_id}/{CURRENT_DATE}/data.csv',
+            mime_type='application/octet-stream',
+            filename=source_path,
+        )
 
 
 default_args = {
