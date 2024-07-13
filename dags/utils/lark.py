@@ -100,7 +100,9 @@ class Lark:
                     task_logger.info(
                         f'[{response.status_code}] Error in fetch tables from base {app_token}, msg: {response.json().get("msg", "")}')
                 else:
-                    tables.extend(response_data.get('data', {}).get('items', []))
+                    tables.extend([{'table_id': item.get('table_id', None), 'name': item.get('name', None),
+                                    'lark_app_token': app_token} for item in
+                                   response_data.get('data', {}).get('items', [])])
                 has_more = response_data.get('data', {}).get('has_more', False)
                 page_token = response_data.get('data', {}).get('page_token', None)
         except Exception as e:

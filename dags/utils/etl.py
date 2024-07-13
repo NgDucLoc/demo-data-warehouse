@@ -14,6 +14,8 @@ from utils.common.schema_helper import apply_schema_to_df
 from utils.dwh.bronze.lark.attendance import TBL_ATTENDANCE, RENAME_ATTENDANCE_COLS
 from utils.dwh.bronze.lark.attendance_record import TBL_ATTENDANCE_RECORD, RENAME_ATTENDANCE_RECORD_COLS
 from utils.dwh.bronze.lark.employee import TBL_EMPLOYEE, RENAME_EMPLOYEE_COLS
+from utils.dwh.bronze.lark.payment import TBL_PAYMENT, RENAME_PAYMENT_COLS
+from utils.dwh.bronze.lark.vendor import TBL_VENDOR, RENAME_VENDOR_COLS
 
 # get the airflow.task logger
 task_logger = logging.getLogger("airflow.task")
@@ -113,7 +115,7 @@ class StandardETL(ABC):
         )
         self.publish_data(silver_data_sets, **kwargs)
         logging.info(
-            'Created & published silver datasget_silver_datasetsets:'
+            'Created & published silver datasets:'
             f' {[ds for ds in silver_data_sets.keys()]}'
         )
 
@@ -179,6 +181,36 @@ class LarkETL(StandardETL):
                 rename_cols_dict=RENAME_ATTENDANCE_COLS
             )
 
+        # Load table Payment from GCS
+        payment_df = read_gcs_table(
+            client_gcs=kwargs.get('client_gcs'),
+            bucket_name=self.RAW_BUCKET,
+            table_path=f"lark/tblV3dM091DDjHwq/{partition}/data.csv"
+        )
+
+        if payment_df is not None and not payment_df.empty:
+            # Common processing for table
+            payment_df = preprocess_bronze_data(
+                data_df=payment_df,
+                tbl_cols_dict=TBL_PAYMENT,
+                rename_cols_dict=RENAME_PAYMENT_COLS
+            )
+
+        # Load table Vendor from GCS
+        vendor_df = read_gcs_table(
+            client_gcs=kwargs.get('client_gcs'),
+            bucket_name=self.RAW_BUCKET,
+            table_path=f"lark/tblZCiYqiaEdOR3f/{partition}/data.csv"
+        )
+
+        if vendor_df is not None and not vendor_df.empty:
+            # Common processing for table
+            vendor_df = preprocess_bronze_data(
+                data_df=vendor_df,
+                tbl_cols_dict=TBL_VENDOR,
+                rename_cols_dict=RENAME_VENDOR_COLS
+            )
+
         return {
             'employee': DataSet(
                 name='employee',
@@ -208,6 +240,28 @@ class LarkETL(StandardETL):
                 primary_keys=['attendance_id', 'partition_value'],
                 storage_path='',
                 table_name='lark_attendance',
+                data_type='bigquery',
+                database='bronze',
+                partition=partition,
+                replace_partition=True,
+            ),
+            'payment': DataSet(
+                name='payment',
+                curr_data=payment_df,
+                primary_keys=['payment_id', 'partition_value'],
+                storage_path='',
+                table_name='lark_payment',
+                data_type='bigquery',
+                database='bronze',
+                partition=partition,
+                replace_partition=True,
+            ),
+            'vendor': DataSet(
+                name='vendor',
+                curr_data=vendor_df,
+                primary_keys=['vendor_id', 'partition_value'],
+                storage_path='',
+                table_name='lark_vendor',
                 data_type='bigquery',
                 database='bronze',
                 partition=partition,
@@ -297,6 +351,74 @@ class LarkETL(StandardETL):
 
         return dim_employee_df
 
+    def get_dim_vendor(
+            self, vendor: DataSet, **kwargs
+    ) -> DataFrame:
+        vendor_df = vendor.curr_data
+
+        if vendor_df is None or vendor_df.empty:
+            return None
+
+        vendor_df['vendor_id'] = vendor_df['vendor_id'].apply(
+            lambda item: ast.literal_eval(item) if isinstance(item, str) else None)
+        vendor_df['vendor_id'] = vendor_df['vendor_id'].apply(
+            lambda item: item[0].get('text', None) if isinstance(item, list) else None)
+        vendor_df['vendor_sur_id'] = vendor_df.apply(
+            lambda item: md5(
+                (item['vendor_id'] + item['datetime_updated'].strftime(self.DEFAULT_FORMAT_DATETIME)).encode(
+                    'utf-8')).hexdigest(), axis=1)
+
+        # get only latest vendor rows in dim_vendor
+        # since dim vendor may have multiple rows per vendor (SCD2)
+        dim_vendor_latest = kwargs['dim_vendor']
+
+        # get net new rows to insert
+        vendor_df_insert_net_new = pd.merge(vendor_df, dim_vendor_latest, how='left', on=['vendor_id'],
+                                            suffixes=('', '_latest'))
+        vendor_df_insert_net_new = vendor_df_insert_net_new[
+            pd.isnull(vendor_df_insert_net_new['datetime_updated_latest'])]
+        vendor_df_insert_net_new = vendor_df_insert_net_new[vendor_df.columns]
+        vendor_df_insert_net_new['is_current'] = True
+        vendor_df_insert_net_new['valid_from'] = vendor_df_insert_net_new['datetime_updated']
+        vendor_df_insert_net_new['valid_to'] = datetime.strptime('2099-01-01 12:00:00', self.DEFAULT_FORMAT_DATETIME)
+
+        # get rows to insert for existing ids
+        vendor_df_insert_existing_ids = pd.merge(vendor_df, dim_vendor_latest, how='inner', on=['vendor_id'],
+                                                 suffixes=('', '_latest'))
+        vendor_df_insert_existing_ids = vendor_df_insert_existing_ids[(
+                vendor_df_insert_existing_ids['datetime_updated_latest'] < vendor_df_insert_existing_ids[
+            'datetime_updated'])]
+        vendor_df_insert_existing_ids = vendor_df_insert_existing_ids[vendor_df.columns]
+        vendor_df_insert_existing_ids['is_current'] = True
+        vendor_df_insert_existing_ids['valid_from'] = vendor_df_insert_existing_ids['datetime_updated']
+        vendor_df_insert_existing_ids['valid_to'] = datetime.strptime('2099-01-01 12:00:00',
+                                                                      self.DEFAULT_FORMAT_DATETIME)
+
+        # get rows to be updated
+        vendor_df_ids_update = pd.merge(vendor_df, dim_vendor_latest, how='inner', on=['vendor_id'],
+                                        suffixes=('_new', ''))
+        vendor_df_ids_update = vendor_df_ids_update[(
+                vendor_df_ids_update['datetime_updated'] < vendor_df_ids_update[
+            'datetime_updated_new'])]
+        vendor_df_ids_update['datetime_updated'] = vendor_df_ids_update['datetime_updated_new']
+        vendor_df_ids_update = vendor_df_ids_update[vendor_df.columns]
+        vendor_df_ids_update['is_current'] = False
+        vendor_df_ids_update['valid_to'] = vendor_df_ids_update['datetime_updated']
+
+        dim_vendor_df = pd.concat(
+            [vendor_df_insert_net_new, vendor_df_insert_existing_ids, vendor_df_ids_update],
+            ignore_index=True)
+
+        # Apply schema from GBQ
+        dim_vendor_df = apply_schema_to_df(
+            client_gbq=kwargs.get('client_gbq'),
+            dataset_name='silver',
+            table_name='dim_vendor',
+            data_df=dim_vendor_df
+        )
+
+        return dim_vendor_df
+
     def get_fact_attendance_record(
             self,
             input_datasets: Dict[str, DataSet],
@@ -347,20 +469,71 @@ class LarkETL(StandardETL):
 
         return fact_attendance_df
 
+    def get_fact_payment(
+            self,
+            input_datasets: Dict[str, DataSet],
+            **kwargs,
+    ) -> DataFrame:
+        self.check_required_inputs(input_datasets, ['payment', 'dim_vendor', 'dim_employee'])
+
+        payment_df = input_datasets['payment'].curr_data
+        dim_vendor = input_datasets['dim_vendor'].curr_data
+        dim_employee = input_datasets['dim_employee'].curr_data
+
+        if payment_df is None or payment_df.empty:
+            return None
+
+        payment_df['payment_id'] = payment_df['payment_id'].apply(
+            lambda item: ast.literal_eval(item) if isinstance(item, str) else None)
+        payment_df['payment_id'] = payment_df['payment_id'].apply(
+            lambda item: item[0].get('text', None) if isinstance(item, list) else None)
+        payment_df['payment_name'] = payment_df['payment_name'].apply(
+            lambda item: ast.literal_eval(item) if isinstance(item, str) else None)
+        payment_df['payment_name'] = payment_df['payment_name'].apply(
+            lambda item: item[0].get('text', None) if isinstance(item, list) else None)
+        payment_df['payment_type'] = payment_df['payment_type'].apply(
+            lambda item: ast.literal_eval(item) if isinstance(item, str) else None)
+        payment_df['payment_type'] = payment_df['payment_type'].apply(
+            lambda item: item[0] if isinstance(item, list) else None)
+        payment_df['buying_person'] = payment_df['buying_person'].apply(
+            lambda item: ast.literal_eval(item) if isinstance(item, str) else None)
+        payment_df['lark_id'] = payment_df['buying_person'].apply(
+            lambda item: item.get('id', None) if isinstance(item, dict) else None)
+        payment_df['buying_person_name'] = payment_df['buying_person'].apply(
+            lambda item: item.get('name', None) if isinstance(item, dict) else None)
+        payment_df['vendor_id'] = payment_df['billing_person'].apply(
+            lambda item: ast.literal_eval(item) if isinstance(item, str) else None)
+        payment_df['vendor_id'] = payment_df['vendor_id'].apply(
+            lambda item: item[0].get('text', None) if isinstance(item, list) else None)
+
+        fact_payment_df = pd.merge(payment_df, dim_vendor, how='left', on=['vendor_id'],
+                                   suffixes=['', '_right'])
+        fact_payment_df = pd.merge(fact_payment_df, dim_employee, how='left', on=['lark_id'],
+                                      suffixes=['', '_right'])
+        # Apply schema from GBQ
+        fact_payment_df = apply_schema_to_df(
+            client_gbq=kwargs.get('client_gbq'),
+            dataset_name='silver',
+            table_name='fact_payment',
+            data_df=fact_payment_df
+        )
+
+        return fact_payment_df
+
     def get_silver_datasets(
             self,
             input_datasets: Dict[str, DataSet],
             **kwargs,
     ) -> Dict[str, DataSet]:
         self.check_required_inputs(input_datasets, ['employee', 'attendance_record'])
+
+        silver_datasets = {}
         dim_employee_df = self.get_dim_employee(
             input_datasets['employee'],
             dim_employee=pd.read_gbq("SELECT * FROM silver.dim_employee WHERE is_current = True", dialect="standard",
                                      credentials=kwargs.get('credentials', None)),
             client_gbq=kwargs.get('client_gbq')
         )
-
-        silver_datasets = {}
         silver_datasets['dim_employee'] = DataSet(
             name='dim_employee',
             curr_data=dim_employee_df,
@@ -371,12 +544,36 @@ class LarkETL(StandardETL):
             database='silver',
             partition=kwargs.get('partition', self.DEFAULT_PARTITION),
         )
+
+        dim_vendor_df = self.get_dim_vendor(
+            input_datasets['vendor'],
+            dim_vendor=pd.read_gbq("SELECT * FROM silver.dim_vendor WHERE is_current = True", dialect="standard",
+                                     credentials=kwargs.get('credentials', None)),
+            client_gbq=kwargs.get('client_gbq')
+        )
+        silver_datasets['dim_vendor'] = DataSet(
+            name='dim_vendor',
+            curr_data=dim_vendor_df,
+            primary_keys=['vendor_sur_id'],
+            storage_path='',
+            table_name='dim_vendor',
+            data_type='',
+            database='silver',
+            partition=kwargs.get('partition', self.DEFAULT_PARTITION),
+        )
         self.publish_data(silver_datasets, **kwargs)
+
         silver_datasets['dim_employee'].curr_data = pd.read_gbq(
             "SELECT * FROM silver.dim_employee WHERE is_current = True", dialect="standard",
             credentials=kwargs.get('credentials', None))
         silver_datasets['dim_employee'].skip_publish = True
         input_datasets['dim_employee'] = silver_datasets['dim_employee']
+
+        silver_datasets['dim_vendor'].curr_data = pd.read_gbq(
+            "SELECT * FROM silver.dim_vendor WHERE is_current = True", dialect="standard",
+            credentials=kwargs.get('credentials', None))
+        silver_datasets['dim_vendor'].skip_publish = True
+        input_datasets['dim_vendor'] = silver_datasets['dim_vendor']
 
         silver_datasets['fact_attendance_record'] = DataSet(
             name='fact_attendance_record',
@@ -395,6 +592,17 @@ class LarkETL(StandardETL):
             primary_keys=['attendance_id'],
             storage_path='',
             table_name='fact_attendance',
+            data_type='',
+            database='silver',
+            partition=kwargs.get('partition', self.DEFAULT_PARTITION),
+            replace_partition=True,
+        )
+        silver_datasets['fact_payment'] = DataSet(
+            name='fact_payment',
+            curr_data=self.get_fact_payment(input_datasets, **kwargs),
+            primary_keys=['payment_id'],
+            storage_path='',
+            table_name='fact_payment',
             data_type='',
             database='silver',
             partition=kwargs.get('partition', self.DEFAULT_PARTITION),
