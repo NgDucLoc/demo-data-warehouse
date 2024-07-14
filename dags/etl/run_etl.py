@@ -19,7 +19,7 @@ default_args = {
     'start_date': datetime(2024, 7, 3),
     "email": ["lam.nguyen3@hebela.net"],
     "retry_delay": timedelta(minutes=5),
-    "schedule_interval": "@daily",
+    "schedule_interval": "0 1 * * *",
     "catchup": False
 }
 with DAG(
