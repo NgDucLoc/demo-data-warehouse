@@ -102,7 +102,7 @@ class StandardETL(ABC):
     ) -> Dict[str, DataSet]:
         pass
 
-    def run(self, **kwargs)
+    def run(self, **kwargs):
         task_logger.info(f'Running ETL at partition: {kwargs.get("partition", self.DEFAULT_PARTITION)}')
         bronze_data_sets = self.get_bronze_datasets(**kwargs)
         self.publish_data(bronze_data_sets, **kwargs)
