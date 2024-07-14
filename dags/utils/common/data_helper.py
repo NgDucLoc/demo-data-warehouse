@@ -136,6 +136,9 @@ def preprocess_bronze_data(data_df, tbl_cols_dict, rename_cols_dict):
                     item) else None)
             data_df[col_name] = pd.to_datetime(data_df[col_name], utc=True)
 
+        if col_type == 'bool':
+            data_df[col_name].fillna(value=False, inplace=True)
+
         if col_type in ['int64', 'float64'] and not is_numeric_dtype(data_df[col_name]):
             data_df[col_name] = data_df[col_name].apply(lambda item: handle_numeric_column(item))
 
