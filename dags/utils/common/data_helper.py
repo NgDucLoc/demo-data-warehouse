@@ -45,7 +45,7 @@ def check_table_exists(client_gbq, table_ref):
         return False
 
 
-def save_table_to_gbq(client_gbq, database_name, table_name, data_df, replace_partition=False,
+def save_table_to_gbq(client_gbq, database_name, table_name, data_df, partition, replace_partition=False,
                       primary_keys=[]):
     data_df['partition_value'] = pd.to_datetime(data_df['partition_value'], utc=True).dt.date
     data_df['partition_value'] = data_df['partition_value'].astype('datetime64[ns, UTC]')
@@ -67,7 +67,7 @@ def save_table_to_gbq(client_gbq, database_name, table_name, data_df, replace_pa
             ),
             schema=target_schema
         )
-        table_ref = client_gbq.dataset(database_name).table(table_name)
+        table_ref = client_gbq.dataset(database_name).table(f'{table_name}${partition.replace("-", "")}')
         job = client_gbq.load_table_from_dataframe(
             data_df, table_ref, job_config=job_config
         )
