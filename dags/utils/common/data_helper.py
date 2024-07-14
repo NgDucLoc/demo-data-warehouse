@@ -1,3 +1,4 @@
+import ast
 import logging
 import math
 from datetime import datetime
@@ -6,6 +7,7 @@ import pandas as pd
 from google.cloud import bigquery, storage
 from google.cloud.exceptions import NotFound
 from google.oauth2 import service_account
+from pandas.api.types import is_numeric_dtype
 
 from .schema_helper import get_gbq_table_schema
 
@@ -118,10 +120,11 @@ def preprocess_bronze_data(data_df, tbl_cols_dict, rename_cols_dict):
                     item) else None)
             data_df[col_name] = pd.to_datetime(data_df[col_name], utc=True)
 
-        # Convert Timestamp to Datetime format
-        if col_type in ['int64']:
+        if col_type in ['int64', 'float64'] and not is_numeric_dtype(data_df[col_name]):
             data_df[col_name] = data_df[col_name].apply(
-                lambda item: item[0] if isinstance(item, list) else 0)
+                lambda item: ast.literal_eval(item) if isinstance(item, str) else None)
+            data_df[col_name] = data_df[col_name].apply(
+                lambda item: item[0] if isinstance(item, list) else item)
 
     data_df = data_df[tbl_cols_dict.keys()].astype(tbl_cols_dict)
     data_df = data_df.rename(columns=rename_cols_dict)
