@@ -76,6 +76,7 @@ class StandardETL(ABC):
                     database_name=input_dataset.database,
                     table_name=input_dataset.table_name,
                     data_df=curr_data,
+                    partition=input_dataset.partition,
                     replace_partition=input_dataset.replace_partition,
                     primary_keys=input_dataset.primary_keys
                 )
