@@ -11,6 +11,7 @@ from utils.etl import LarkETL
 
 # get the airflow.task logger
 task_logger = logging.getLogger("airflow.task")
+ETL_RUN_DATE = Variable.get('etl_run_date', default_var=None)
 SOURCE_NAME = 'lark'
 PARTITION_FORMAT = '%Y-%m-%d'
 
@@ -39,7 +40,7 @@ with DAG(
             raw_bucket=raw_bucket,
             raw_storage_path=raw_storage_path
         )
-        partition = execution_date.strftime(PARTITION_FORMAT)
+        partition = execution_date.strftime(PARTITION_FORMAT) if not ETL_RUN_DATE else ETL_RUN_DATE
         gcloud_conn = Connection.get_connection_from_secrets(
             conn_id='google_cloud_default'
         )
