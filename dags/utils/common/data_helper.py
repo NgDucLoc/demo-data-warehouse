@@ -106,6 +106,22 @@ def save_table_to_gbq(client_gbq, database_name, table_name, data_df, replace_pa
             client_gbq.delete_table(temp_table)
 
 
+def handle_numeric_column(value):
+    if isinstance(value, str):
+        value = ast.literal_eval(value)
+
+    if isinstance(value, list):
+        value = value[0]
+
+    if isinstance(value, dict):
+        value = value.get('text', 0)
+
+    if not isinstance(value, (int, float, complex)):
+        value = 0
+
+    return value
+
+
 def preprocess_bronze_data(data_df, tbl_cols_dict, rename_cols_dict):
     for col_name, col_type in tbl_cols_dict.items():
         # Set None for col (lark: no data no column).
@@ -121,10 +137,7 @@ def preprocess_bronze_data(data_df, tbl_cols_dict, rename_cols_dict):
             data_df[col_name] = pd.to_datetime(data_df[col_name], utc=True)
 
         if col_type in ['int64', 'float64'] and not is_numeric_dtype(data_df[col_name]):
-            data_df[col_name] = data_df[col_name].apply(
-                lambda item: ast.literal_eval(item) if isinstance(item, str) else None)
-            data_df[col_name] = data_df[col_name].apply(
-                lambda item: item[0] if isinstance(item, list) else item)
+            data_df[col_name] = data_df[col_name].apply(lambda item: handle_numeric_column(item))
 
     data_df = data_df[tbl_cols_dict.keys()].astype(tbl_cols_dict)
     data_df = data_df.rename(columns=rename_cols_dict)
