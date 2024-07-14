@@ -102,7 +102,8 @@ class StandardETL(ABC):
     ) -> Dict[str, DataSet]:
         pass
 
-    def run(self, **kwargs):
+    def run(self, **kwargs)
+        task_logger.info(f'Running ETL at partition: {kwargs.get("partition", self.DEFAULT_PARTITION)}')
         bronze_data_sets = self.get_bronze_datasets(**kwargs)
         self.publish_data(bronze_data_sets, **kwargs)
         task_logger.info(
@@ -621,7 +622,7 @@ class LarkETL(StandardETL):
         dim_employee_df = input_datasets['dim_employee'].curr_data
         fact_attendance_df = input_datasets['fact_attendance'].curr_data
 
-        cube_attendance_report = None
+        cube_attendance_report_df = None
         if not(fact_attendance_df is None or fact_attendance_df.empty):
             merged_df = fact_attendance_df.merge(dim_employee_df, on=['user_id'], how='left')
 
@@ -659,17 +660,17 @@ class LarkETL(StandardETL):
                 data_df=cube_attendance_report_df
             )
 
-            cube_attendance_report = DataSet(
-                name='cube_attendance_report',
-                curr_data=cube_attendance_report_df,
-                primary_keys=['lark_hrm_code', 'attendance_date'],
-                storage_path='',
-                table_name='cube_attendance_report',
-                data_type='',
-                database='gold',
-                partition=kwargs.get('partition', self.DEFAULT_PARTITION),
-                replace_partition=True,
-            )
+        cube_attendance_report = DataSet(
+            name='cube_attendance_report',
+            curr_data=cube_attendance_report_df,
+            primary_keys=['lark_hrm_code', 'attendance_date'],
+            storage_path='',
+            table_name='cube_attendance_report',
+            data_type='',
+            database='gold',
+            partition=kwargs.get('partition', self.DEFAULT_PARTITION),
+            replace_partition=True,
+        )
 
         return {'cube_attendance_report': cube_attendance_report}
 
