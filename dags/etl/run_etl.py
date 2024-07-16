@@ -16,15 +16,15 @@ SOURCE_NAME = 'lark'
 PARTITION_FORMAT = '%Y-%m-%d'
 
 default_args = {
-    'start_date': datetime(2024, 7, 3),
+    'start_date': datetime(2024, 7, 16),
     "email": ["lam.nguyen3@hebela.net"],
-    "retry_delay": timedelta(minutes=5),
-    "schedule": "0 1 * * *",
-    "catchup": False
+    "retry_delay": timedelta(minutes=5)
 }
 with DAG(
-        dag_id='run_etl_v2',
+        dag_id='run_etl',
         default_args=default_args,
+        catchup=False,
+        schedule_interval="0 1 * * *"
 ) as dag:
     start_etl = EmptyOperator(task_id="start_etl")
     end_etl = EmptyOperator(task_id="end_etl")
