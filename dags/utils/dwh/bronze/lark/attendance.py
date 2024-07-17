@@ -1,7 +1,7 @@
 # CREATE TABLE bronze.lark_attendance (
 #     user_id STRING,
 #     attendance_id STRING,
-#     attendance_date DATE,
+#     attendance_date TIMESTAMP,
 #     employee STRING,
 #     group_name STRING,
 #     shift_name STRING,

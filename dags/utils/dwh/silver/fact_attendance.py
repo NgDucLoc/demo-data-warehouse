@@ -1,6 +1,6 @@
 # CREATE TABLE silver.fact_attendance (
 #   attendance_id STRING,
-#   attendance_date DATE,
+#   attendance_date TIMESTAMP,
 #   user_id STRING,
 #   employee_sur_id STRING,
 #   employee_type STRING,
