@@ -34,7 +34,7 @@ with DAG(
     def run_etl(**context):
         raw_bucket = Variable.get('gcs_bucket_raw_name', default_var=None)
         raw_storage_path = f'gs://{raw_bucket}/{SOURCE_NAME}'
-        execution_date = context['execution_date']
+        execution_date = context['data_interval_end']
 
         lark_etl = LarkETL(
             raw_bucket=raw_bucket,
