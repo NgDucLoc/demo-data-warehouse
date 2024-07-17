@@ -3,7 +3,6 @@
 #   attendance_date TIMESTAMP,
 #   user_id STRING,
 #   employee_sur_id STRING,
-#   employee_type STRING,
 #   group_name STRING,
 #   shift_name STRING,
 #   check_in_record_id STRING,
