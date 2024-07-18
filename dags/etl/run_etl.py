@@ -11,19 +11,20 @@ from utils.etl import LarkETL
 
 # get the airflow.task logger
 task_logger = logging.getLogger("airflow.task")
+ETL_RUN_DATE = Variable.get('etl_run_date', default_var=None)
 SOURCE_NAME = 'lark'
 PARTITION_FORMAT = '%Y-%m-%d'
 
 default_args = {
-    'start_date': datetime(2024, 7, 3),
+    'start_date': datetime(2024, 7, 16),
     "email": ["lam.nguyen3@hebela.net"],
-    "retry_delay": timedelta(minutes=5),
-    "schedule_interval": "@daily",
-    "catchup": False
+    "retry_delay": timedelta(minutes=5)
 }
 with DAG(
         dag_id='run_etl',
         default_args=default_args,
+        catchup=False,
+        schedule_interval="0 1 * * *"
 ) as dag:
     start_etl = EmptyOperator(task_id="start_etl")
     end_etl = EmptyOperator(task_id="end_etl")
@@ -33,13 +34,13 @@ with DAG(
     def run_etl(**context):
         raw_bucket = Variable.get('gcs_bucket_raw_name', default_var=None)
         raw_storage_path = f'gs://{raw_bucket}/{SOURCE_NAME}'
-        execution_date = context['execution_date']
+        execution_date = context['data_interval_end']
 
         lark_etl = LarkETL(
             raw_bucket=raw_bucket,
             raw_storage_path=raw_storage_path
         )
-        partition = execution_date.strftime(PARTITION_FORMAT)
+        partition = execution_date.strftime(PARTITION_FORMAT) if not ETL_RUN_DATE else ETL_RUN_DATE
         gcloud_conn = Connection.get_connection_from_secrets(
             conn_id='google_cloud_default'
         )

@@ -2,7 +2,7 @@
 # 	payment_id STRING,
 # 	payment_name STRING,
 # 	payment_type STRING,
-# 	payment_date DATE,
+# 	payment_date TIMESTAMP,
 # 	project_name STRING,
 # 	goods STRING,
 # 	price_unit INT64,
@@ -43,9 +43,9 @@ TBL_PAYMENT = {
     "Ghi chú": "string",
     "CEO duyệt": "bool",
     "Kế toán đã thanh toán": "bool",
-    "Người mua đã nhận được": "bool",
+    "Người mua đã nhận được tiền": "bool",
     "Ngày CEO duyệt": "datetime64[ns, UTC]",
-    "Ngày kế toán chuyển tiền": "datetime64[ns, UTC]",
+    "Ngày kế toán chuyển khoản": "datetime64[ns, UTC]",
     "Ngày người mua nhận tiền": "datetime64[ns, UTC]",
     "Payment_ID": "string"
 }
@@ -68,9 +68,9 @@ RENAME_PAYMENT_COLS = {
     "Ghi chú": "note",
     "CEO duyệt": "was_approved_by_ceo",
     "Kế toán đã thanh toán": "was_paid_by_accountant",
-    "Người mua đã nhận được": "was_recieve",
+    "Người mua đã nhận được tiền": "was_recieve",
     "Ngày CEO duyệt": "ceo_approved_datetime",
-    "Ngày kế toán chuyển tiền": "accountant_paid_datetime",
+    "Ngày kế toán chuyển khoản": "accountant_paid_datetime",
     "Ngày người mua nhận tiền": "recieve_datetime",
     "Payment_ID": "payment_id"
 }

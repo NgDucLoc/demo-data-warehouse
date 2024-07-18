@@ -1,3 +1,4 @@
+import ast
 import logging
 import math
 from datetime import datetime
@@ -6,6 +7,7 @@ import pandas as pd
 from google.cloud import bigquery, storage
 from google.cloud.exceptions import NotFound
 from google.oauth2 import service_account
+from pandas.api.types import is_numeric_dtype
 
 from .schema_helper import get_gbq_table_schema
 
@@ -43,7 +45,7 @@ def check_table_exists(client_gbq, table_ref):
         return False
 
 
-def save_table_to_gbq(client_gbq, database_name, table_name, data_df, replace_partition=False,
+def save_table_to_gbq(client_gbq, database_name, table_name, data_df, partition, replace_partition=False,
                       primary_keys=[]):
     data_df['partition_value'] = pd.to_datetime(data_df['partition_value'], utc=True).dt.date
     data_df['partition_value'] = data_df['partition_value'].astype('datetime64[ns, UTC]')
@@ -65,7 +67,7 @@ def save_table_to_gbq(client_gbq, database_name, table_name, data_df, replace_pa
             ),
             schema=target_schema
         )
-        table_ref = client_gbq.dataset(database_name).table(table_name)
+        table_ref = client_gbq.dataset(database_name).table(f'{table_name}${partition.replace("-", "")}')
         job = client_gbq.load_table_from_dataframe(
             data_df, table_ref, job_config=job_config
         )
@@ -104,6 +106,22 @@ def save_table_to_gbq(client_gbq, database_name, table_name, data_df, replace_pa
             client_gbq.delete_table(temp_table)
 
 
+def handle_numeric_column(value):
+    if isinstance(value, str):
+        value = ast.literal_eval(value)
+
+    if isinstance(value, list):
+        value = value[0]
+
+    if isinstance(value, dict):
+        value = value.get('text', 0)
+
+    if not isinstance(value, (int, float, complex)):
+        value = 0
+
+    return value
+
+
 def preprocess_bronze_data(data_df, tbl_cols_dict, rename_cols_dict):
     for col_name, col_type in tbl_cols_dict.items():
         # Set None for col (lark: no data no column).
@@ -118,10 +136,11 @@ def preprocess_bronze_data(data_df, tbl_cols_dict, rename_cols_dict):
                     item) else None)
             data_df[col_name] = pd.to_datetime(data_df[col_name], utc=True)
 
-        # Convert Timestamp to Datetime format
-        if col_type in ['int64']:
-            data_df[col_name] = data_df[col_name].apply(
-                lambda item: item[0] if isinstance(item, list) else 0)
+        if col_type == 'bool':
+            data_df[col_name].fillna(value=False, inplace=True)
+
+        if col_type in ['int64', 'float64'] and not is_numeric_dtype(data_df[col_name]):
+            data_df[col_name] = data_df[col_name].apply(lambda item: handle_numeric_column(item))
 
     data_df = data_df[tbl_cols_dict.keys()].astype(tbl_cols_dict)
     data_df = data_df.rename(columns=rename_cols_dict)

@@ -76,6 +76,7 @@ class StandardETL(ABC):
                     database_name=input_dataset.database,
                     table_name=input_dataset.table_name,
                     data_df=curr_data,
+                    partition=input_dataset.partition,
                     replace_partition=input_dataset.replace_partition,
                     primary_keys=input_dataset.primary_keys
                 )
@@ -103,6 +104,7 @@ class StandardETL(ABC):
         pass
 
     def run(self, **kwargs):
+        task_logger.info(f'Running ETL at partition: {kwargs.get("partition", self.DEFAULT_PARTITION)}')
         bronze_data_sets = self.get_bronze_datasets(**kwargs)
         self.publish_data(bronze_data_sets, **kwargs)
         task_logger.info(
@@ -509,7 +511,7 @@ class LarkETL(StandardETL):
         fact_payment_df = pd.merge(payment_df, dim_vendor, how='left', on=['vendor_id'],
                                    suffixes=['', '_right'])
         fact_payment_df = pd.merge(fact_payment_df, dim_employee, how='left', on=['lark_id'],
-                                      suffixes=['', '_right'])
+                                   suffixes=['', '_right'])
         # Apply schema from GBQ
         fact_payment_df = apply_schema_to_df(
             client_gbq=kwargs.get('client_gbq'),
@@ -548,7 +550,7 @@ class LarkETL(StandardETL):
         dim_vendor_df = self.get_dim_vendor(
             input_datasets['vendor'],
             dim_vendor=pd.read_gbq("SELECT * FROM silver.dim_vendor WHERE is_current = True", dialect="standard",
-                                     credentials=kwargs.get('credentials', None)),
+                                   credentials=kwargs.get('credentials', None)),
             client_gbq=kwargs.get('client_gbq')
         )
         silver_datasets['dim_vendor'] = DataSet(
@@ -620,41 +622,44 @@ class LarkETL(StandardETL):
 
         dim_employee_df = input_datasets['dim_employee'].curr_data
         fact_attendance_df = input_datasets['fact_attendance'].curr_data
-        merged_df = fact_attendance_df.merge(dim_employee_df, on=['user_id'], how='left')
 
-        cube_attendance_report_df = pd.DataFrame()
-        cube_attendance_report_df['attendance_month'] = merged_df['attendance_date'].dt.strftime('%Y-%m')
-        cube_attendance_report_df['attendance_date'] = merged_df['attendance_date'].dt.strftime('%Y-%m-%d %H:%M:%S')
-        cube_attendance_report_df['lark_hrm_code'] = merged_df['user_id']
-        cube_attendance_report_df['hrm_name'] = merged_df['name']
-        cube_attendance_report_df['job_title'] = merged_df['job_title']
-        datetime_col = ['check_in_datetime', 'check_out_datetime', 'check_out_shift_time', 'check_in_shift_time']
-        merged_df[datetime_col] = merged_df[datetime_col].apply(
-            lambda x: pd.to_datetime(x, format='%d/%m/%Y %H:%M', errors='coerce'))
-        cube_attendance_report_df['late_time_minute'] = (
-                (merged_df['check_in_datetime'] + pd.Timedelta(hours=7) - merged_df[
-                    'check_in_shift_time']).dt.total_seconds() / 60
-        ).clip(upper=0).abs().fillna(0)
-        cube_attendance_report_df['early_time_minute'] = (
-                (merged_df['check_out_datetime'] + pd.Timedelta(hours=7) - merged_df[
-                    'check_out_shift_time']).dt.total_seconds() / 60
-        ).clip(upper=0).abs().fillna(0)
-        cube_attendance_report_df['working_duration_hours'] = (
-                (merged_df['check_out_datetime'] - merged_df['check_in_datetime']).dt.total_seconds() / 3600
-        ).fillna(0)
-        cube_attendance_report_df['working_duration_benchmark'] = (
-                (merged_df['check_out_shift_time'] - merged_df['check_in_shift_time']).dt.total_seconds() / 3600
-        ).fillna(0)
-        cube_attendance_report_df['penalty_amount'] = merged_df['penalty']
-        cube_attendance_report_df.dropna(how='all', inplace=True)
+        cube_attendance_report_df = None
+        if not(fact_attendance_df is None or fact_attendance_df.empty):
+            merged_df = fact_attendance_df.merge(dim_employee_df, on=['user_id'], how='left')
 
-        # Apply schema from GBQ
-        cube_attendance_report_df = apply_schema_to_df(
-            client_gbq=kwargs.get('client_gbq'),
-            dataset_name='gold',
-            table_name='cube_attendance_report',
-            data_df=cube_attendance_report_df
-        )
+            cube_attendance_report_df = pd.DataFrame()
+            cube_attendance_report_df['attendance_month'] = merged_df['attendance_date'].dt.strftime('%Y-%m')
+            cube_attendance_report_df['attendance_date'] = merged_df['attendance_date'].dt.strftime('%Y-%m-%d %H:%M:%S')
+            cube_attendance_report_df['lark_hrm_code'] = merged_df['user_id']
+            cube_attendance_report_df['hrm_name'] = merged_df['name']
+            cube_attendance_report_df['job_title'] = merged_df['job_title']
+            datetime_col = ['check_in_datetime', 'check_out_datetime', 'check_out_shift_time', 'check_in_shift_time']
+            merged_df[datetime_col] = merged_df[datetime_col].apply(
+                lambda x: pd.to_datetime(x, format='%d/%m/%Y %H:%M', errors='coerce'))
+            cube_attendance_report_df['late_time_minute'] = (
+                    (merged_df['check_in_datetime'] + pd.Timedelta(hours=7) - merged_df[
+                        'check_in_shift_time']).dt.total_seconds() / 60
+            ).clip(upper=0).abs().fillna(0)
+            cube_attendance_report_df['early_time_minute'] = (
+                    (merged_df['check_out_datetime'] + pd.Timedelta(hours=7) - merged_df[
+                        'check_out_shift_time']).dt.total_seconds() / 60
+            ).clip(upper=0).abs().fillna(0)
+            cube_attendance_report_df['working_duration_hours'] = (
+                    (merged_df['check_out_datetime'] - merged_df['check_in_datetime']).dt.total_seconds() / 3600
+            ).fillna(0)
+            cube_attendance_report_df['working_duration_benchmark'] = (
+                    (merged_df['check_out_shift_time'] - merged_df['check_in_shift_time']).dt.total_seconds() / 3600
+            ).fillna(0)
+            cube_attendance_report_df['penalty_amount'] = merged_df['penalty']
+            cube_attendance_report_df.dropna(how='all', inplace=True)
+
+            # Apply schema from GBQ
+            cube_attendance_report_df = apply_schema_to_df(
+                client_gbq=kwargs.get('client_gbq'),
+                dataset_name='gold',
+                table_name='cube_attendance_report',
+                data_df=cube_attendance_report_df
+            )
 
         cube_attendance_report = DataSet(
             name='cube_attendance_report',
@@ -669,3 +674,4 @@ class LarkETL(StandardETL):
         )
 
         return {'cube_attendance_report': cube_attendance_report}
+

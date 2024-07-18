@@ -2,7 +2,7 @@
 # 	payment_id STRING,
 # 	payment_name STRING,
 # 	payment_type STRING,
-# 	payment_date DATE,
+# 	payment_date TIMESTAMP,
 # 	project_name STRING,
 # 	goods STRING,
 # 	price_unit INT64,
