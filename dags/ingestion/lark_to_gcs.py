@@ -13,6 +13,7 @@ from airflow.operators.python import PythonOperator
 from airflow.providers.google.cloud.hooks.gcs import GCSHook
 from utils.common.data_helper import DEFAULT_DATETIME_FORMAT, DEFAULT_DATE_PARTITON_FORMAT
 from utils.lark import Lark
+from utils.notifier import LarkChatNotifier
 
 # get the airflow.task logger
 task_logger = logging.getLogger("airflow.task")
@@ -98,6 +99,8 @@ default_args = {
 with DAG(
         dag_id='ingestion_lark_to_gcs',
         default_args=default_args,
+        on_success_callback=LarkChatNotifier(message="Thành công lấy dữ liệu từ Lark về GCS"),
+        on_failure_callback=LarkChatNotifier(message="Thất bại lấy dữ liệu từ Lark về GCS"),
 ) as dag:
     start_ingestion = EmptyOperator(task_id="start_ingestion")
     end_ingestion = EmptyOperator(task_id="end_ingestion")

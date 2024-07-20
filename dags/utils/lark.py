@@ -1,5 +1,5 @@
 import logging
-
+import json
 import requests
 
 # get the airflow.task logger
@@ -7,11 +7,12 @@ task_logger = logging.getLogger("airflow.task")
 
 
 class Lark:
-    def __init__(self, app_id, app_secret, api_page_size=20):
+    def __init__(self, app_id, app_secret, group_chat_id=None, api_page_size=20):
         self.base_url = 'open.larksuite.com'
         self.app_id = app_id
         self.app_secret = app_secret
         self.api_page_size = api_page_size
+        self.group_chat_id = group_chat_id
         self.tenant_access_token = self.get_tenant_access_token()
 
     def get_tenant_access_token(self):
@@ -109,3 +110,25 @@ class Lark:
             task_logger.error(f'[get_tenant_access_token] Error function: {e}')
 
         return tables
+
+    def send_message(self, message_body):
+        task_logger.info('[send_message_to_group_chat] Sending message to group chat...')
+
+        try:
+            api_url = f'https://{self.base_url}/open-apis/im/v1/messages?receive_id_type=chat_id'
+            headers = {
+                'Authorization': f'Bearer {self.tenant_access_token}',
+            }
+            body = {
+              "receive_id": self.group_chat_id,
+              "msg_type": "text",
+              "content": json.dumps({"text": message_body})
+            }
+            response = requests.post(api_url, headers=headers, data=body)
+            response_data = response.json()
+
+            if response.status_code != 200 or response_data.get('code') != 0:
+                task_logger.info(
+                    f'[{response.status_code}] Error in get send_message_to_group_chat, msg: {response.json().get("msg", "")}')
+        except Exception as e:
+            task_logger.error(f'[send_message_to_group_chat] Error function: {e}')
