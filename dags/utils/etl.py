@@ -628,6 +628,7 @@ class LarkETL(StandardETL):
             merged_df = fact_attendance_df.merge(dim_employee_df, on=['user_id'], how='left')
 
             cube_attendance_report_df = pd.DataFrame()
+            merged_df['attendance_date'] = merged_df['attendance_date'] + pd.Timedelta(hours=7)
             cube_attendance_report_df['attendance_month'] = merged_df['attendance_date'].dt.strftime('%Y-%m')
             cube_attendance_report_df['attendance_date'] = merged_df['attendance_date'].dt.strftime('%Y-%m-%d %H:%M:%S')
             cube_attendance_report_df['lark_hrm_code'] = merged_df['user_id']
