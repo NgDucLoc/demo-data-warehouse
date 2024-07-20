@@ -8,6 +8,7 @@ from airflow.models import Variable, Connection
 from airflow.operators.empty import EmptyOperator
 from utils.common.data_helper import get_bigquery_connection
 from utils.etl import LarkETL
+from utils.notifier import LarkChatNotifier
 
 # get the airflow.task logger
 task_logger = logging.getLogger("airflow.task")
@@ -24,7 +25,9 @@ with DAG(
         dag_id='run_etl',
         default_args=default_args,
         catchup=False,
-        schedule_interval="0 1 * * *"
+        schedule_interval="0 1 * * *",
+        on_success_callback=LarkChatNotifier(message="Thành công chạy etl trên dữ liệu Lark"),
+        on_failure_callback=LarkChatNotifier(message="Thất bại chạy etl trên dữ liệu Lark"),
 ) as dag:
     start_etl = EmptyOperator(task_id="start_etl")
     end_etl = EmptyOperator(task_id="end_etl")
