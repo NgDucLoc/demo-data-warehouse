@@ -1,6 +1,6 @@
 from airflow.notifications.basenotifier import BaseNotifier
 from airflow.models import Variable
-from lark import Lark
+from utils.lark import Lark
 
 
 class LarkChatNotifier(BaseNotifier):
