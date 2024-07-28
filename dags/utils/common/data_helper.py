@@ -139,8 +139,10 @@ def preprocess_bronze_data(data_df, tbl_cols_dict, rename_cols_dict):
         if col_type == 'bool':
             data_df[col_name].fillna(value=False, inplace=True)
 
-        if col_type in ['int64', 'float64'] and not is_numeric_dtype(data_df[col_name]):
-            data_df[col_name] = data_df[col_name].apply(lambda item: handle_numeric_column(item))
+        if col_type in ['int64', 'float64']:
+            if not is_numeric_dtype(data_df[col_name]):
+                data_df[col_name] = data_df[col_name].apply(lambda item: handle_numeric_column(item))
+            data_df[col_name].fillna(value=0, inplace=True)
 
     data_df = data_df[tbl_cols_dict.keys()].astype(tbl_cols_dict)
     data_df = data_df.rename(columns=rename_cols_dict)
