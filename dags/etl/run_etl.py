@@ -25,7 +25,7 @@ with DAG(
         dag_id='run_etl',
         default_args=default_args,
         catchup=False,
-        schedule_interval="0 1 * * *",
+        schedule_interval="*/5 * * * *",
         on_success_callback=LarkChatNotifier(message="Thành công chạy etl trên dữ liệu Lark"),
         on_failure_callback=LarkChatNotifier(message="Thất bại chạy etl trên dữ liệu Lark"),
 ) as dag:

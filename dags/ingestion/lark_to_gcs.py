@@ -93,12 +93,12 @@ default_args = {
     'start_date': datetime(2024, 6, 29),
     "email": ["lam.nguyen3@hebela.net"],
     "retry_delay": timedelta(minutes=5),
-    "schedule_interval": "@daily",
     "catchup": False
 }
 with DAG(
         dag_id='ingestion_lark_to_gcs',
         default_args=default_args,
+        schedule_interval="*/5 * * * *",
         on_success_callback=LarkChatNotifier(message="Thành công lấy dữ liệu từ Lark về GCS"),
         on_failure_callback=LarkChatNotifier(message="Thất bại lấy dữ liệu từ Lark về GCS"),
 ) as dag:
